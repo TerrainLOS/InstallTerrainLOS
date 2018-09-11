@@ -10,7 +10,7 @@ build-essential binutils-msp430 gcc-msp430 msp430-libc binutils-avr gcc-avr gdb-
 The current install.sh script assumes:
 * contiki's dependencies are met.
 * the contiki repo doesn't exist
-* the TerrainLOS doesn't exist
+* the TerrainLOS repo doesn't exist
 
 The current install.sh script clones contiki and TerrainLOS.
 Then it sets up cooja to recognize TerrainLOS.
@@ -20,4 +20,4 @@ Ideally we could install the dependencies for the user.
 But dependencies are tricky.
 We could assume the user is using Instant Contiki.
 Then we don't have to worry about dependencies.
-But then the contiki repo already exists, and is possibly out of date.
+But then the contiki repo already exists, and is possibly using the wrong release version.
