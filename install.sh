@@ -110,13 +110,15 @@ get_terrain_path(){
 }
 
 install_contiki(){
-  log "Please wait while contiki is installed to '$CONTIKI_PATH'"
+  log "WAIT: contiki is cloning to '$CONTIKI_PATH'"
   git clone -q $CONTIKI_REPO $CONTIKI_PATH
+  log "INFO: contiki was successfully cloned"
 }
 
 install_terrain(){
-  log "Please wait while TerrainLOS is installed to '$TERRAIN_PATH'"
+  log "WAIT: TerrainLOS is cloning to '$TERRAIN_PATH'"
   git clone -q $TERRAIN_REPO $TERRAIN_PATH
+  log "INFO: TerrainLOS was successfully cloned"
 }
 
 current_branch(){
@@ -136,61 +138,79 @@ get_branch(){
     done
   fi
   popd
-  log "Using branch '$BRANCH'"
+  log "INFO: using branch '$BRANCH'"
 }
 
 checkout_contiki(){
   pushd $CONTIKI_PATH
+  log "ACTION: checking out contiki branch $BRANCH"
   git checkout -q $BRANCH
+  log "WAIT: initializing contiki submodules"
   git submodule update --init
+  log "INFO: contiki submodules initialized"
   popd
 }
 
 checkout_terrain(){
   pushd $TERRAIN_PATH
+  log "ACTION: checking out TerrainLOS branch $BRANCH"
   git checkout -q $BRANCH
   popd
 }
 
 link_terrain(){
-  ln -s $TERRAIN_PATH $CONTIKI_PATH/tools/cooja/apps/TerrainLOS
+  local APPS_PATH=$CONTIKI_PATH/tools/cooja/apps
+  log "ACTION: linking $TERRAIN_PATH to cooja apps directory '$APPS_PATH'"
+  ln -s $TERRAIN_PATH $APPS_PATH/TerrainLOS
 }
 
 register_terrain(){
   if test -f $COOJA_CONF; then
-    # cooja config already exists, just modify it
-    sed -i '/^DEFAULT_PROJECTDIRS=/ s/$/;[APPS_DIR]\/TerrainLOS/' $COOJA_CONF
+    log "INFO: $COOJA_CONF exists"
+    if grep -q 'DEFAULT_PROJECTDIRS.*TerrainLOS'; then
+      log "INFO: TerrainLOS is already registered"
+    else
+      log "ACTION: registering TerrainLOS as new extension"
+      sed -i '/^DEFAULT_PROJECTDIRS=/ s/$/;[APPS_DIR]\/TerrainLOS/' $COOJA_CONF
+    fi
   else
-    # create config
+    log "INFO: $COOJA_CONF does not exist"
+    log "ACTION: initializing extensions list with TerrainLOS"
     echo "DEFAULT_PROJECTDIRS=[APPS_DIR]/TerrainLOS" > $COOJA_CONF
   fi
 }
 
 build_terrain(){
+  log "WAIT: TerrainLOS is building"
+  local LOG=$TERRAIN_PATH/build.log
   pushd $TERRAIN_PATH
-  COOJA_PATH=$CONTIKI_PATH/tools/cooja ant jar >/dev/null 2>&1
+  COOJA_PATH=$CONTIKI_PATH/tools/cooja ant jar >$LOG 2>&1
   popd
+  log "INFO: TerrainLOS finished building. View the log at $LOG"
 }
 
 test_terrain(){
+  log "WAIT: TerrainLOS is being tested"
   local exit_code
+  local LOG=$TERRAIN_PATH/test.log
   pushd $TERRAIN_PATH
-  COOJA_PATH=$CONTIKI_PATH/tools/cooja ant test >/dev/null 2>&1
+  COOJA_PATH=$CONTIKI_PATH/tools/cooja ant test >$LOG 2>&1
   exit_code=$?
   popd
-  return exit_code
+  log "INFO: TerrainLOS finished testing. View the log at $LOG"
+  return $exit_code
 }
 
 main(){
   if valid_contiki "$CONTIKI_PATH"; then
-    log "contiki already installed at default location: '$CONTIKI_PATH'"
+    log "INFO: contiki already installed at default location: '$CONTIKI_PATH'"
     if confirm "$USE_CUSTOM"; then
       get_contiki_path
       mkdir "$CONTIKI_PATH"
       install_contiki
     fi
   else
-    log "contiki is not installed at default location: '$CONTIKI_PATH'"
+    log "INFO: contiki is not installed at default location: '$CONTIKI_PATH'"
     get_contiki_path
     mkdir "$CONTIKI_PATH"
     install_contiki
@@ -205,9 +225,9 @@ main(){
   register_terrain
   build_terrain
   if test_terrain; then
-    log "All TerrainLOS tests passed"
+    log "INFO: All TerrainLOS tests passed"
   else
-    log "TerrainLOS failed its tests"
+    log "LOG: TerrainLOS failed its tests"
   fi
 
   confirm "Would you like to view the help file" && cat $HELP_FILE
