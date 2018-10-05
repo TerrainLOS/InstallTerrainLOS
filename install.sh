@@ -6,12 +6,13 @@ set -u
 # constants
 CONTIKI_REPO="https://github.com/contiki-os/contiki"
 TERRAIN_REPO="https://github.com/TerrainLOS/TerrainLOS"
-USE_CUSTOM="Would you like to use a custom contiki directory"
+USE_CUSTOM="Install an additional copy to a custom directory"
 COOJA_CONF=~/.cooja.user.properties
 HELP_FILE=HELP.txt
 
-# the default contiki installation path. this variable is subject to change
+# default installation paths. these variables are subject to change
 CONTIKI_PATH="$HOME/contiki"
+TERRAIN_PATH="$HOME/TerrainLOS"
 
 # silence these commands
 pushd(){
@@ -41,15 +42,6 @@ prompt(){
   printf "$1: "
 }
 
-valid_contiki(){
-  # checks that the remote origin url of a git repo matches contiki's repo url
-  test -d $1 || return 1
-  pushd "$1"
-  local REMOTE_ORIGIN_URL="$(git config --get remote.origin.url)"
-  popd
-  test "$REMOTE_ORIGIN_URL" = "$CONTIKI_REPO"
-}
-
 usable_path(){
   # checks that a directory exists and its writable
   if test ! -d "$1"; then
@@ -69,19 +61,27 @@ get_contiki_path(){
   # exports CONTIKI_PATH by prompting for new path
   local new_path
   while :; do
-    prompt "Please enter the path where contiki should be installed"
+    echo "Enter the path where contiki should be installed."
+    echo "Leave blank to use default location [$HOME]."
+    prompt "path"
     read new_path
     eval new_path=$new_path # required for tilde expansion
 
-    test -z "$new_path" && continue
+    test -z "$new_path" && new_path=$HOME
     usable_path "$new_path" || continue
 
-    if test -d $new_path/contiki; then
-      log "ERROR: '$new_path/contiki' is already a contiki installation"
-      continue
+    if grep -qs "$CONTIKI_REPO" $new_path/contiki/.git/config; then
+      log "INFO: '$new_path/contiki' is already a contiki installation"
+      echo "You can overwrite $new_path/contiki with a new installation."
+      echo "Or you can choose not to, and be re-prompted for a new path."
+      if confirm "overwrite $new_path/contiki"; then
+        rm -rf $new_path/contiki
+        break
+      else
+        continue
+      fi
     fi
 
-    # all checks passed, so new_path is valid
     break
 
   done
@@ -93,16 +93,25 @@ get_terrain_path(){
   # exports TERRAIN_PATH by prompting for a new path
   local new_path
   while :; do
-    prompt "Please enter the path where TerrainLOS should be installed"
+    echo "Enter the path where TerrainLOS should be installed."
+    echo "Leave blank to use default location [$HOME]."
+    prompt "path"
     read new_path
     eval new_path=$new_path # required for tilde expansion
 
-    test -z "$new_path" && continue
+    test -z "$new_path" && new_path=$HOME
     usable_path "$new_path" || continue
 
-    if test -d $new_path/TerrainLOS; then
-      log "ERROR: '$new_path/TerrainLOS' is already a TerrainLOS installation"
-      continue
+    if grep -qs "$TERRAIN_REPO" $new_path/TerrainLOS/.git/config; then
+      log "INFO: '$new_path/TerrainLOS' is already a TerrainLOS installation"
+      echo "You can overwrite $new_path/TerrainLOS with a new installation."
+      echo "Or you can choose not to, and be re-prompted for a new path."
+      if confirm "overwrite $new_path/TerrainLOS"; then
+        rm -rf $new_path/TerrainLOS
+        break
+      else
+        continue
+      fi
     fi
     break
   done
@@ -129,10 +138,15 @@ get_branch(){
   pushd $CONTIKI_PATH
   BRANCH="$(current_branch)"
   if ! confirm "Would you like to use the current contiki branch [$BRANCH]"; then
+    log "INFO: listing current contiki branches"
     git branch -a
     while :; do
-      prompt "Please enter a branch to use"
+      echo "Please enter a branch to use."
+      echo "You can omit 'remotes/origin/' from the branch name."
+      echo "Leave the branch blank to use the default [release-2-7]"
+      prompt "branch"
       read BRANCH
+      test -z $BRANCH && BRANCH='release-2-7'
       git show-ref -q $BRANCH && break
       log "ERROR: $BRANCH is not a valid branch"
     done
@@ -144,7 +158,7 @@ get_branch(){
 checkout_contiki(){
   pushd $CONTIKI_PATH
   log "ACTION: checking out contiki branch $BRANCH"
-  git checkout -q $BRANCH
+  git checkout -qf $BRANCH
   log "WAIT: initializing contiki submodules"
   git submodule update --init
   log "INFO: contiki submodules initialized"
@@ -154,28 +168,41 @@ checkout_contiki(){
 checkout_terrain(){
   pushd $TERRAIN_PATH
   log "ACTION: checking out TerrainLOS branch $BRANCH"
-  git checkout -q $BRANCH
+  git checkout -qf $BRANCH
   popd
 }
 
 link_terrain(){
   local APPS_PATH=$CONTIKI_PATH/tools/cooja/apps
-  log "ACTION: linking $TERRAIN_PATH to cooja apps directory '$APPS_PATH'"
-  ln -s $TERRAIN_PATH $APPS_PATH/TerrainLOS
+  if test -e $APPS_PATH/TerrainLOS; then
+    log "INFO: TerrainLOS is already linked to cooja apps directory"
+  else
+    log "ACTION: linking $TERRAIN_PATH to cooja apps directory '$APPS_PATH'"
+    ln -s $TERRAIN_PATH $APPS_PATH/TerrainLOS
+  fi
 }
 
 register_terrain(){
   if test -f $COOJA_CONF; then
     log "INFO: $COOJA_CONF exists"
-    if grep -q 'DEFAULT_PROJECTDIRS.*TerrainLOS'; then
-      log "INFO: TerrainLOS is already registered"
+    if grep -q 'DEFAULT_PROJECTDIRS' $COOJA_CONF; then
+      if grep -q 'DEFAULT_PROJECTDIRS.*TerrainLOS' $COOJA_CONF; then
+        log "INFO: TerrainLOS is already registered"
+      else
+        log "ACTION: registering TerrainLOS as new extension"
+        if grep -q 'DEFAULT_PROJECTDIRS=$' $COOJA_CONF; then
+          sed -i '/^DEFAULT_PROJECTDIRS=/ s/$/[APPS_DIR]\/TerrainLOS/' $COOJA_CONF
+        else
+          sed -i '/^DEFAULT_PROJECTDIRS=/ s/$/;[APPS_DIR]\/TerrainLOS/' $COOJA_CONF
+        fi
+      fi
     else
-      log "ACTION: registering TerrainLOS as new extension"
-      sed -i '/^DEFAULT_PROJECTDIRS=/ s/$/;[APPS_DIR]\/TerrainLOS/' $COOJA_CONF
+      # cooja config exists, but DEFAULT_PROJECTDIRS option isn't present
+      echo "DEFAULT_PROJECTDIRS=[APPS_DIR]/TerrainLOS" >> $COOJA_CONF
     fi
   else
     log "INFO: $COOJA_CONF does not exist"
-    log "ACTION: initializing extensions list with TerrainLOS"
+    log "ACTION: initializing cooja extensions list with TerrainLOS"
     echo "DEFAULT_PROJECTDIRS=[APPS_DIR]/TerrainLOS" > $COOJA_CONF
   fi
 }
@@ -202,22 +229,34 @@ test_terrain(){
 }
 
 main(){
-  if valid_contiki "$CONTIKI_PATH"; then
-    log "INFO: contiki already installed at default location: '$CONTIKI_PATH'"
+  if grep -qs "$CONTIKI_REPO" "$CONTIKI_PATH/.git/config"; then
+    log "INFO: contiki already installed at default location [$CONTIKI_PATH]"
     if confirm "$USE_CUSTOM"; then
       get_contiki_path
       mkdir "$CONTIKI_PATH"
       install_contiki
     fi
   else
-    log "INFO: contiki is not installed at default location: '$CONTIKI_PATH'"
+    log "INFO: contiki is not installed at default location [$CONTIKI_PATH]"
     get_contiki_path
-    mkdir "$CONTIKI_PATH"
+    mkdir -p "$CONTIKI_PATH"
     install_contiki
   fi
 
-  get_terrain_path
-  install_terrain
+  if grep -qs "$TERRAIN_REPO" "$TERRAIN_PATH/.git/config"; then
+    log "INFO: TerrainLOS already installed at default location [$TERRAIN_PATH]"
+    if confirm "$USE_CUSTOM"; then
+      get_terrain_path
+      mkdir "$TERRAIN_PATH"
+      install_terrain
+    fi
+  else
+    log "INFO: TerrainLOS is not installed at default location [$TERRAIN_PATH]"
+    get_terrain_path
+    mkdir -p "$TERRAIN_PATH"
+    install_terrain
+  fi
+
   get_branch
   checkout_contiki
   checkout_terrain
