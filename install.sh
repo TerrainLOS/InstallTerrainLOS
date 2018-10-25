@@ -207,7 +207,8 @@ register_terrain(){
     log "INFO: $COOJA_CONF does not exist"
   fi
   log "ACTION: initializing cooja extensions list with TerrainLOS"
-  echo "DEFAULT_PROJECTDIRS=[APPS_DIR]/TerrainLOS" > $COOJA_CONF
+  local OLD_LIST=$(grep "DEFAULT_PROJECTDIRS" $CONTIKI_PATH/tools/cooja/config/external_tools.config | cut -d= -f2)
+  echo "DEFAULT_PROJECTDIRS = $OLD_LIST;[APPS_DIR]/TerrainLOS" > $COOJA_CONF
 }
 
 build_terrain(){
