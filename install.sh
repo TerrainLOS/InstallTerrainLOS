@@ -136,6 +136,8 @@ current_branch(){
 
 get_branch(){
   pushd $CONTIKI_PATH
+  log "ACTION: fetching latest contiki branches"
+  git fetch -q
   BRANCH="$(current_branch)"
   if ! confirm "Would you like to use the current contiki branch [$BRANCH]"; then
     log "INFO: listing current contiki branches"
@@ -184,27 +186,28 @@ link_terrain(){
 
 register_terrain(){
   if test -f $COOJA_CONF; then
-    log "INFO: $COOJA_CONF exists"
-    if grep -q 'DEFAULT_PROJECTDIRS' $COOJA_CONF; then
-      if grep -q 'DEFAULT_PROJECTDIRS.*TerrainLOS' $COOJA_CONF; then
-        log "INFO: TerrainLOS is already registered"
-      else
-        log "ACTION: registering TerrainLOS as new extension"
-        if grep -q 'DEFAULT_PROJECTDIRS=$' $COOJA_CONF; then
-          sed -i '/^DEFAULT_PROJECTDIRS=/ s/$/[APPS_DIR]\/TerrainLOS/' $COOJA_CONF
-        else
-          sed -i '/^DEFAULT_PROJECTDIRS=/ s/$/;[APPS_DIR]\/TerrainLOS/' $COOJA_CONF
-        fi
-      fi
-    else
-      # cooja config exists, but DEFAULT_PROJECTDIRS option isn't present
-      echo "DEFAULT_PROJECTDIRS=[APPS_DIR]/TerrainLOS" >> $COOJA_CONF
-    fi
+    log "ACTION: $COOJA_CONF exists, moving it to $COOJA_CONF.backup"
+    mv $COOJA_CONF $COOJA_CONF.backup
+#    if grep -q 'DEFAULT_PROJECTDIRS' $COOJA_CONF; then
+#      if grep -q 'DEFAULT_PROJECTDIRS.*TerrainLOS' $COOJA_CONF; then
+#        log "INFO: TerrainLOS is already registered"
+#      else
+#        log "ACTION: registering TerrainLOS as new extension"
+#        if grep -q 'DEFAULT_PROJECTDIRS=$' $COOJA_CONF; then
+#          sed -i '/^DEFAULT_PROJECTDIRS=/ s/$/[APPS_DIR]\/TerrainLOS/' $COOJA_CONF
+#        else
+#          sed -i '/^DEFAULT_PROJECTDIRS=/ s/$/;[APPS_DIR]\/TerrainLOS/' $COOJA_CONF
+#        fi
+#      fi
+#    else
+#      # cooja config exists, but DEFAULT_PROJECTDIRS option isn't present
+#      echo "DEFAULT_PROJECTDIRS=[APPS_DIR]/TerrainLOS" >> $COOJA_CONF
+#    fi
   else
     log "INFO: $COOJA_CONF does not exist"
-    log "ACTION: initializing cooja extensions list with TerrainLOS"
-    echo "DEFAULT_PROJECTDIRS=[APPS_DIR]/TerrainLOS" > $COOJA_CONF
   fi
+  log "ACTION: initializing cooja extensions list with TerrainLOS"
+  echo "DEFAULT_PROJECTDIRS=[APPS_DIR]/TerrainLOS" > $COOJA_CONF
 }
 
 build_terrain(){
